@@ -296,11 +296,46 @@ function bonusesForGame(g, brand=S.brand){
     (!brand || !b.brands.length || b.brands.includes(brand))
   );
 }
+function countryAliases(name){
+  const raw = String(name||'').trim();
+  const low = raw.toLowerCase();
+  const rowToName = D.geoLabels || {
+    ROW1:'France', ROW2:'Greece', ROW3:'Spain', ROW4:'Germany', ROW6:'Netherlands', ROW10:'United Kingdom'
+  };
+  const nameToRow = {};
+  Object.entries(rowToName).forEach(([row, n]) => {
+    nameToRow[String(n).toLowerCase()] = row;
+    nameToRow[row.toLowerCase()] = row;
+  });
+  // extra spellings
+  nameToRow['uk'] = 'ROW10';
+  nameToRow['united kingdom'] = 'ROW10';
+  nameToRow['great britain'] = 'ROW10';
+  nameToRow['holland'] = 'ROW6';
+  const row = nameToRow[low];
+  const pretty = row || raw;
+  const names = new Set([low, raw.toLowerCase()]);
+  if (row) {
+    names.add(row.toLowerCase());
+    names.add(String(rowToName[row]||'').toLowerCase());
+  }
+  return { row: row || null, label: row || raw, names };
+}
+function displayGeo(name){
+  return countryAliases(name).label;
+}
+function sameGeo(a, b){
+  if (!a || !b) return false;
+  const A = countryAliases(a).names;
+  const B = countryAliases(b).names;
+  for (const x of A) if (B.has(x)) return true;
+  return false;
+}
 function restrictedIn(prov, country){
   if (!country || !prov) return null;
   const r = D.restr[prov.toLowerCase()];
   if (!r) return null;
-  return (r.all||[]).some(c => c.toLowerCase() === country.toLowerCase()) ? r : null;
+  return (r.all||[]).some(c => sameGeo(c, country)) ? r : null;
 }
 
 function applyGeo(val){
@@ -1001,12 +1036,17 @@ function renderBB(){
 }
 function renderRestr(){
   const rows = Object.values(D.restr).sort((a,b)=>a.provider.localeCompare(b.provider));
+  const show = list => (list||[]).map(displayGeo);
   $('#restrTable').innerHTML = `<thead><tr><th>Provider</th><th>Main</th><th>All blocked</th></tr></thead><tbody>
   ${rows.map(r=>{
-    const hit = S.country && (r.all||[]).some(c=>c.toLowerCase()===S.country.toLowerCase());
+    const hit = S.country && (r.all||[]).some(c=>sameGeo(c, S.country) || sameGeo(c, S.geo));
     return `<tr><td><b>${esc(r.provider)}</b> ${hit?'<span class="chip bad">blocked</span>':''}</td>
-      <td style="color:var(--am)">${esc((r.main||[]).join(', ')||'—')}</td>
-      <td style="color:var(--tx2);font-size:12px">${(r.all||[]).map(c=>S.country&&c.toLowerCase()===S.country.toLowerCase()?`<b style="color:var(--rd)">${esc(c)}</b>`:esc(c)).join(', ')}</td></tr>`;
+      <td style="color:var(--am)">${esc(show(r.main).join(', ')||'—')}</td>
+      <td style="color:var(--tx2);font-size:12px">${(r.all||[]).map(c=>{
+        const lab = displayGeo(c);
+        const on = S.country && (sameGeo(c, S.country) || sameGeo(c, S.geo));
+        return on ? `<b style="color:var(--rd)">${esc(lab)}</b>` : esc(lab);
+      }).join(', ')}</td></tr>`;
   }).join('')}</tbody>`;
 }
 function renderAbout(){
